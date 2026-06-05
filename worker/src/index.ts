@@ -8,6 +8,7 @@ export { AudioObject };
 const DEFAULT_TTL_SECONDS = 86_400;
 const DEFAULT_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 const DEFAULT_POKE_API_URL = "https://poke.com/api/v1/inbound/api-message";
+const DEFAULT_POKE_INGEST_BASE_URL = "https://api.poke.com/v1/ingest";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -29,7 +30,8 @@ export default {
         success: true,
         storage: "durable-object-sqlite",
         maxAudioBytes: maxAudioBytes(env),
-        retentionSeconds: ttlSeconds(env)
+        retentionSeconds: ttlSeconds(env),
+        pokeIngestConfigured: Boolean(resolvePokeToken(env) && resolvePokeEndpoint(env))
       });
     }
 
@@ -147,10 +149,21 @@ async function sendPoke(env: Env, body: Record<string, unknown>): Promise<{
   status: number;
   body: string;
 }> {
-  const response = await fetch(env.POKE_API_URL || DEFAULT_POKE_API_URL, {
+  const token = resolvePokeToken(env);
+  const endpoint = resolvePokeEndpoint(env);
+
+  if (!token || !endpoint) {
+    return {
+      ok: false,
+      status: 500,
+      body: "Missing POKE_INGEST_TOKEN/POKE_API_KEY or POKE_INGEST_ENDPOINT_ID/POKE_INGEST_URL"
+    };
+  }
+
+  const response = await fetch(endpoint, {
     method: "POST",
     headers: {
-      authorization: `Bearer ${env.POKE_API_KEY}`,
+      authorization: `Bearer ${token}`,
       "content-type": "application/json"
     },
     body: JSON.stringify(body)
@@ -169,4 +182,16 @@ function ttlSeconds(env: Env): number {
 
 function maxAudioBytes(env: Env): number {
   return Math.min(parsePositiveInt(env.MAX_AUDIO_BYTES, DEFAULT_MAX_AUDIO_BYTES), DEFAULT_MAX_AUDIO_BYTES);
+}
+
+function resolvePokeToken(env: Env): string | undefined {
+  return env.POKE_INGEST_TOKEN || env.POKE_API_KEY;
+}
+
+function resolvePokeEndpoint(env: Env): string | undefined {
+  if (env.POKE_INGEST_URL) return env.POKE_INGEST_URL;
+  if (env.POKE_INGEST_ENDPOINT_ID) {
+    return `${DEFAULT_POKE_INGEST_BASE_URL}/${encodeURIComponent(env.POKE_INGEST_ENDPOINT_ID)}`;
+  }
+  return env.POKE_API_URL || DEFAULT_POKE_API_URL;
 }

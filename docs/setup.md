@@ -1,12 +1,15 @@
 # Simple Setup
 
-You only need to paste 3 secrets into Cloudflare:
+You need to paste these secrets into Cloudflare:
 
-- `POKE_API_KEY`: your real Poke API key from `https://poke.com/kitchen`
+- `POKE_INGEST_TOKEN`: your Poke ingest bearer token
+- `POKE_INGEST_ENDPOINT_ID`: your Poke ingest endpoint ID
 - `APP_UPLOAD_TOKEN`: a random app password
 - `URL_SIGNING_SECRET`: a random backend signing secret
 
-Do not put the Poke API key inside the phone app.
+If Poke only gave you one API key and no separate ingest token, use that key as `POKE_INGEST_TOKEN`.
+
+Do not put the Poke token/API key inside the phone app.
 
 ## 1. Cloudflare Backend
 
@@ -23,16 +26,30 @@ Your browser opens. Log in to Cloudflare.
 Then run these one by one:
 
 ```bash
-npx wrangler secret put POKE_API_KEY
+npx wrangler secret put POKE_INGEST_TOKEN
+npx wrangler secret put POKE_INGEST_ENDPOINT_ID
 npx wrangler secret put APP_UPLOAD_TOKEN
 npx wrangler secret put URL_SIGNING_SECRET
 ```
 
 When it asks for values:
 
-- For `POKE_API_KEY`, paste your Poke API key.
+- For `POKE_INGEST_TOKEN`, paste your Poke ingest bearer token.
+- For `POKE_INGEST_ENDPOINT_ID`, paste the ID from Poke's ingest URL.
 - For `APP_UPLOAD_TOKEN`, paste the app token Codex gave you.
 - For `URL_SIGNING_SECRET`, paste the signing secret Codex gave you.
+
+Example: if Poke gives this URL:
+
+```text
+https://api.poke.com/v1/ingest/abc123
+```
+
+then `POKE_INGEST_ENDPOINT_ID` is:
+
+```text
+abc123
+```
 
 Deploy:
 
@@ -81,3 +98,4 @@ Then:
 - No R2 bucket is needed.
 - Audio expires after 24 hours.
 - Keep voice notes short. The backend rejects audio above 20 MB.
+- The backend sends JSON to Poke with `message`, `audio_url`, `mime_type`, `duration_ms`, `source`, `device`, and `expires_at`.
