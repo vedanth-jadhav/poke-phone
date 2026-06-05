@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Poke Phone</string>
+    <string name="qs_tile_label">Poke capture</string>
+    <string name="ready_channel_name">Poke capture</string>
+    <string name="ready_notification_title">Poke capture is ready</string>
+    <string name="ready_notification_body">Tap to ramble to Poke.</string>
+</resources>

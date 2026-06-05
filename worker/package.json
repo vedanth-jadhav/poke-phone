@@ -1,0 +1,17 @@
+{
+  "name": "poke-phone-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "check": "tsc --noEmit",
+    "dev": "wrangler dev",
+    "test": "rm -rf .tmp/test-build && tsc -p tsconfig.test.json && node --test test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250605.0",
+    "typescript": "^5.8.3",
+    "wrangler": "^4.19.1"
+  }
+}
