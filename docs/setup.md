@@ -1,68 +1,83 @@
-# Setup Checklist
+# Simple Setup
 
-## 1. Create Poke API Key
+You only need to paste 3 secrets into Cloudflare:
 
-1. Open `https://poke.com/kitchen`.
-2. Go to API Keys.
-3. Create a new V2 API key.
-4. Keep it private. Do not paste it into the Android app.
+- `POKE_API_KEY`: your real Poke API key from `https://poke.com/kitchen`
+- `APP_UPLOAD_TOKEN`: a random app password
+- `URL_SIGNING_SECRET`: a random backend signing secret
 
-## 2. Deploy Backend On Cloudflare Free Tier
+Do not put the Poke API key inside the phone app.
 
-1. Copy `worker/wrangler.toml.example` to `worker/wrangler.toml`.
-2. Edit `PUBLIC_BASE_URL` after your first deploy gives you the Worker URL.
-3. Keep the Durable Object binding and migration exactly as shown in the example config.
-4. Set Worker secrets:
+## 1. Cloudflare Backend
+
+Open Terminal in this repo:
 
 ```bash
-cd worker
+cd /Users/vedanthjadhav/code/poke-phone/worker
+npm install
+npx wrangler login
+```
+
+Your browser opens. Log in to Cloudflare.
+
+Then run these one by one:
+
+```bash
 npx wrangler secret put POKE_API_KEY
 npx wrangler secret put APP_UPLOAD_TOKEN
 npx wrangler secret put URL_SIGNING_SECRET
 ```
 
-Use long random values for `APP_UPLOAD_TOKEN` and `URL_SIGNING_SECRET`.
+When it asks for values:
 
-5. Deploy:
+- For `POKE_API_KEY`, paste your Poke API key.
+- For `APP_UPLOAD_TOKEN`, paste the app token Codex gave you.
+- For `URL_SIGNING_SECRET`, paste the signing secret Codex gave you.
+
+Deploy:
 
 ```bash
-npm install
 npx wrangler deploy
 ```
 
-6. Set the deployed Worker URL as `PUBLIC_BASE_URL` in `wrangler.toml`, then deploy again.
+Copy the final Worker URL. It looks like:
 
-## 3. Build APK In GitHub Actions
+```text
+https://poke-phone-backend.YOURNAME.workers.dev
+```
 
-1. Push this folder as its own GitHub repo.
-2. Open the repository Actions tab.
-3. Run the `Build` workflow.
-4. Download `poke-phone-debug-apk` from the workflow artifacts.
-5. Install the APK manually on your phone.
+## 2. Build APK
 
-## 4. Phone Setup
+1. Open `https://github.com/vedanth-jadhav/poke-phone`.
+2. Click **Actions**.
+3. Click **Build**.
+4. Click **Run workflow**.
+5. Wait until it finishes.
+6. Download artifact **poke-phone-debug-apk**.
+7. Unzip it.
+8. Install `app-debug.apk` on your Android phone.
 
-1. Open Poke Phone.
-2. Enter the Worker base URL, for example `https://poke-phone.yourname.workers.dev`.
-3. Enter the `APP_UPLOAD_TOKEN` you created.
-4. Grant microphone permission.
-5. Grant notification permission if you want the fallback notification.
-6. Tap `Default assistant settings`.
-7. Set Poke Phone as the default digital assistant.
-8. In Nothing OS settings, make sure power-button assistant invocation is enabled.
+## 3. Phone App
 
-## 5. Test
+Open **Poke Phone**.
 
-1. Tap `Test backend`.
-2. Tap `Start capture` inside the app.
-3. Confirm Poke receives a message.
-4. Long-press power while the phone is unlocked.
-5. Speak, then stop using the visible stop control or silence timeout.
-6. Confirm the UI shows `saving`, `sending`, then `done`.
+Paste:
+
+- **Worker URL**: the Cloudflare Worker URL from deploy.
+- **Upload token**: the same `APP_UPLOAD_TOKEN` you put into Cloudflare.
+
+Then:
+
+1. Tap **Save settings**.
+2. Tap **Test backend**.
+3. Tap **Mic** and allow microphone.
+4. Tap **Assistant**.
+5. Set **Poke Phone** as default assistant.
+6. Long-press power and speak.
 
 ## Notes
 
-- The app sends raw M4A audio by URL because the Poke API docs describe JSON messages, not direct file attachments.
-- Audio files expire after 24 hours using a Durable Object alarm.
-- SQLite-backed Durable Objects are available on the Workers Free plan. The Worker chunks audio because a single SQLite value is limited to 2 MB.
-- The Worker rejects audio above 20 MB. This is designed for short personal voice notes, not long recordings.
+- Backend uses Cloudflare Durable Objects, not R2.
+- No R2 bucket is needed.
+- Audio expires after 24 hours.
+- Keep voice notes short. The backend rejects audio above 20 MB.

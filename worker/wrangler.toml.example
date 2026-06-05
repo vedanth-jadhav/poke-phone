@@ -3,7 +3,6 @@ main = "src/index.ts"
 compatibility_date = "2026-06-01"
 
 [vars]
-PUBLIC_BASE_URL = "https://poke-phone.YOUR_SUBDOMAIN.workers.dev"
 AUDIO_TTL_SECONDS = "86400"
 MAX_AUDIO_BYTES = "20971520"
 POKE_API_URL = "https://poke.com/api/v1/inbound/api-message"
