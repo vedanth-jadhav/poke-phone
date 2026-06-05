@@ -31,7 +31,7 @@ export default {
         storage: "durable-object-sqlite",
         maxAudioBytes: maxAudioBytes(env),
         retentionSeconds: ttlSeconds(env),
-        pokeIngestConfigured: Boolean(resolvePokeToken(env) && resolvePokeEndpoint(env))
+        pokeIngestConfigured: Boolean(resolvePokeToken(env) && resolvePokeEndpoints(env).length > 0)
       });
     }
 
@@ -150,9 +150,9 @@ async function sendPoke(env: Env, body: Record<string, unknown>): Promise<{
   body: string;
 }> {
   const token = resolvePokeToken(env);
-  const endpoint = resolvePokeEndpoint(env);
+  const endpoints = resolvePokeEndpoints(env);
 
-  if (!token || !endpoint) {
+  if (!token || endpoints.length === 0) {
     return {
       ok: false,
       status: 500,
@@ -160,20 +160,28 @@ async function sendPoke(env: Env, body: Record<string, unknown>): Promise<{
     };
   }
 
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${token}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify(body)
-  });
+  let lastResult = { ok: false, status: 0, body: "No Poke endpoint attempted" };
+  for (const endpoint of endpoints) {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json"
+      },
+      body: JSON.stringify(body)
+    });
 
-  return {
-    ok: response.ok,
-    status: response.status,
-    body: await response.text()
-  };
+    const responseBody = await response.text();
+    lastResult = {
+      ok: response.ok,
+      status: response.status,
+      body: responseBody
+    };
+
+    if (response.ok) return lastResult;
+  }
+
+  return lastResult;
 }
 
 function ttlSeconds(env: Env): number {
@@ -188,10 +196,23 @@ function resolvePokeToken(env: Env): string | undefined {
   return env.POKE_INGEST_TOKEN || env.POKE_API_KEY;
 }
 
-function resolvePokeEndpoint(env: Env): string | undefined {
-  if (env.POKE_INGEST_URL) return env.POKE_INGEST_URL;
+function resolvePokeEndpoints(env: Env): string[] {
+  if (env.POKE_INGEST_URL) return [env.POKE_INGEST_URL, fallbackPokeUrl(env.POKE_INGEST_URL)].filter(
+    (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index
+  );
   if (env.POKE_INGEST_ENDPOINT_ID) {
-    return `${DEFAULT_POKE_INGEST_BASE_URL}/${encodeURIComponent(env.POKE_INGEST_ENDPOINT_ID)}`;
+    const id = encodeURIComponent(env.POKE_INGEST_ENDPOINT_ID);
+    return [
+      `${DEFAULT_POKE_INGEST_BASE_URL}/${id}`,
+      `https://poke.com/api/v1/ingest/${id}`
+    ];
   }
-  return env.POKE_API_URL || DEFAULT_POKE_API_URL;
+  return [env.POKE_API_URL || DEFAULT_POKE_API_URL];
+}
+
+function fallbackPokeUrl(endpoint: string): string | undefined {
+  if (endpoint.startsWith("https://api.poke.com/v1/ingest/")) {
+    return endpoint.replace("https://api.poke.com/v1/ingest/", "https://poke.com/api/v1/ingest/");
+  }
+  return undefined;
 }

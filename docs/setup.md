@@ -99,3 +99,4 @@ Then:
 - Audio expires after 24 hours.
 - Keep voice notes short. The backend rejects audio above 20 MB.
 - The backend sends JSON to Poke with `message`, `audio_url`, `mime_type`, `duration_ms`, `source`, `device`, and `expires_at`.
+- The Worker tries Poke's official `api.poke.com` ingest URL first, then falls back to `poke.com/api` if Poke's API hostname returns the 1016 DNS/origin error.
