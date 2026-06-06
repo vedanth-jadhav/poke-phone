@@ -9,6 +9,8 @@ const DEFAULT_TTL_SECONDS = 86_400;
 const DEFAULT_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 const DEFAULT_POKE_API_URL = "https://poke.com/api/v1/inbound/api-message";
 const DEFAULT_POKE_INGEST_BASE_URL = "https://poke.com/api/v1/ingest";
+const EMPTY_M4A_BASE64 =
+  "AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhtZGF0";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -31,17 +33,51 @@ export default {
         storage: "durable-object-sqlite",
         maxAudioBytes: maxAudioBytes(env),
         retentionSeconds: ttlSeconds(env),
-        pokeIngestConfigured: Boolean(resolvePokeToken(env) && resolvePokeEndpoints(env).length > 0)
+        pokeIngestConfigured: Boolean(resolvePokeToken(env) && resolvePokeEndpoints(env).length > 0),
+        pokeIngestEndpoints: resolvePokeEndpoints(env)
       });
     }
 
     if (request.method === "POST" && url.pathname === "/v1/test-message") {
       const authError = requireBearer(request, env.APP_UPLOAD_TOKEN);
       if (authError) return authError;
-      const poke = await sendPoke(env, {
-        message: "Test from Poke Phone. If you see this, the backend can reach Poke."
+      const id = `test-${crypto.randomUUID()}`;
+      const ttl = ttlSeconds(env);
+      const expiresAtSeconds = Math.floor(Date.now() / 1000) + ttl;
+      const publicBaseUrl = env.PUBLIC_BASE_URL || new URL(request.url).origin;
+      const audioUrl = await signAudioUrl(publicBaseUrl, id, expiresAtSeconds, env.URL_SIGNING_SECRET);
+      const audioBytes = base64ToArrayBuffer(EMPTY_M4A_BASE64);
+      const audioObject = env.AUDIO_STORE.get(env.AUDIO_STORE.idFromName(id));
+      const storeResponse = await audioObject.fetch("https://audio.internal/store", {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-audio-ttl": String(ttl),
+          "x-audio-mime": "audio/mp4",
+          "x-duration-ms": "0",
+          "x-source": "test-message",
+          "x-device": "worker-test"
+        },
+        body: audioBytes
       });
-      return json({ success: poke.ok, pokeStatus: poke.status, pokeBody: poke.body }, {
+
+      if (!storeResponse.ok) {
+        return json(
+          { success: false, error: "failed to store test audio", body: await storeResponse.text() },
+          { status: 500 }
+        );
+      }
+
+      const poke = await sendPoke(env, {
+        message: "Manual test from Poke Phone backend. This checks the same ingest schema as a real voice note.",
+        audio_url: audioUrl,
+        mime_type: "audio/mp4",
+        duration_ms: "0",
+        source: "worker-test",
+        device: "worker-test",
+        expires_at: new Date(expiresAtSeconds * 1000).toISOString()
+      });
+      return json({ success: poke.ok, id, audioUrl, pokeStatus: poke.status, pokeBody: poke.body }, {
         status: poke.ok ? 200 : 502
       });
     }
@@ -87,6 +123,7 @@ async function receiveVoiceNote(request: Request, env: Env): Promise<Response> {
 
   const objectId = env.AUDIO_STORE.idFromName(id);
   const audioObject = env.AUDIO_STORE.get(objectId);
+  const audioBytes = await audio.arrayBuffer();
   const storeResponse = await audioObject.fetch("https://audio.internal/store", {
     method: "POST",
     headers: {
@@ -97,7 +134,7 @@ async function receiveVoiceNote(request: Request, env: Env): Promise<Response> {
       "x-source": String(form.get("source") || "android"),
       "x-device": String(form.get("device") || "unknown")
     },
-    body: await audio.arrayBuffer()
+    body: audioBytes
   });
 
   if (!storeResponse.ok) {
@@ -218,4 +255,13 @@ function resolvePokeEndpoints(env: Env): string[] {
     return [`${DEFAULT_POKE_INGEST_BASE_URL}/${id}`];
   }
   return [env.POKE_API_URL || DEFAULT_POKE_API_URL];
+}
+
+function base64ToArrayBuffer(value: string): ArrayBuffer {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes.buffer;
 }
