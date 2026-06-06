@@ -8,7 +8,6 @@ export { AudioObject };
 const DEFAULT_TTL_SECONDS = 86_400;
 const DEFAULT_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 const DEFAULT_POKE_API_URL = "https://poke.com/api/v1/inbound/api-message";
-const DEFAULT_POKE_INGEST_BASE_URL = "https://poke.com/api/v1/ingest";
 const EMPTY_M4A_BASE64 =
   "AAAAHGZ0eXBpc29tAAACAGlzb21pc28ybXA0MQAAAAhtZGF0";
 
@@ -33,8 +32,8 @@ export default {
         storage: "durable-object-sqlite",
         maxAudioBytes: maxAudioBytes(env),
         retentionSeconds: ttlSeconds(env),
-        pokeIngestConfigured: Boolean(resolvePokeToken(env) && resolvePokeEndpoints(env).length > 0),
-        pokeIngestEndpoints: resolvePokeEndpoints(env)
+        pokeApiConfigured: Boolean(resolvePokeApiKey(env)),
+        pokeApiUrl: resolvePokeApiUrl(env)
       });
     }
 
@@ -69,7 +68,7 @@ export default {
       }
 
       const poke = await sendPoke(env, {
-        message: "Manual test from Poke Phone backend. This checks the same ingest schema as a real voice note.",
+        message: "Manual test from Poke Phone backend. This checks the same official api-message schema as a real voice note.",
         audio_url: audioUrl,
         mime_type: "audio/mp4",
         duration_ms: "0",
@@ -186,54 +185,48 @@ async function sendPoke(env: Env, body: Record<string, unknown>): Promise<{
   status: number;
   body: string;
 }> {
-  const token = resolvePokeToken(env);
-  const endpoints = resolvePokeEndpoints(env);
+  const apiKey = resolvePokeApiKey(env);
+  const endpoint = resolvePokeApiUrl(env);
 
-  if (!token || endpoints.length === 0) {
-    console.error("Poke config missing: check POKE_INGEST_TOKEN and POKE_INGEST_ENDPOINT_ID");
+  if (!apiKey) {
+    console.error("Poke config missing: check POKE_API_KEY");
     return {
       ok: false,
       status: 500,
-      body: "Missing configuration"
+      body: "Missing POKE_API_KEY"
     };
   }
 
   const jsonBody = JSON.stringify(body);
-  let lastResult = { ok: false, status: 0, body: "No Poke endpoint attempted" };
-  for (const endpoint of endpoints) {
-    try {
-      console.log(`POST -> ${endpoint}`);
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${token}`,
-          "content-type": "application/json",
-          "x-poke-source": "poke-phone-worker"
-        },
-        body: jsonBody
-      });
+  try {
+    console.log(`POST -> ${endpoint}`);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+        "x-poke-source": "poke-phone-worker"
+      },
+      body: jsonBody
+    });
 
-      const responseBody = await response.text();
-      lastResult = {
-        ok: response.ok,
-        status: response.status,
-        body: responseBody
-      };
-
-      if (response.ok) {
-        console.log(`Poke hit: ${endpoint} (${response.status})`);
-        return lastResult;
-      }
-
-      console.warn(`Poke miss: ${endpoint} -> ${response.status}: ${responseBody}`);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Poke fetch error: ${endpoint}: ${message}`);
-      lastResult = { ok: false, status: 0, body: message };
+    const responseBody = await response.text();
+    if (response.ok) {
+      console.log(`Poke API hit: ${endpoint} (${response.status})`);
+    } else {
+      console.warn(`Poke API miss: ${endpoint} -> ${response.status}: ${responseBody}`);
     }
-  }
 
-  return lastResult;
+    return {
+      ok: response.ok,
+      status: response.status,
+      body: responseBody
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Poke API fetch error: ${endpoint}: ${message}`);
+    return { ok: false, status: 0, body: message };
+  }
 }
 
 function ttlSeconds(env: Env): number {
@@ -244,17 +237,12 @@ function maxAudioBytes(env: Env): number {
   return Math.min(parsePositiveInt(env.MAX_AUDIO_BYTES, DEFAULT_MAX_AUDIO_BYTES), DEFAULT_MAX_AUDIO_BYTES);
 }
 
-function resolvePokeToken(env: Env): string | undefined {
-  return env.POKE_INGEST_TOKEN || env.POKE_API_KEY;
+function resolvePokeApiKey(env: Env): string | undefined {
+  return env.POKE_API_KEY;
 }
 
-function resolvePokeEndpoints(env: Env): string[] {
-  if (env.POKE_INGEST_URL) return [env.POKE_INGEST_URL];
-  if (env.POKE_INGEST_ENDPOINT_ID) {
-    const id = encodeURIComponent(env.POKE_INGEST_ENDPOINT_ID);
-    return [`${DEFAULT_POKE_INGEST_BASE_URL}/${id}`];
-  }
-  return [env.POKE_API_URL || DEFAULT_POKE_API_URL];
+function resolvePokeApiUrl(env: Env): string {
+  return env.POKE_API_URL || DEFAULT_POKE_API_URL;
 }
 
 function base64ToArrayBuffer(value: string): ArrayBuffer {

@@ -1,8 +1,5 @@
 export interface Env {
   AUDIO_STORE: DurableObjectNamespace;
-  POKE_INGEST_ENDPOINT_ID?: string;
-  POKE_INGEST_TOKEN?: string;
-  POKE_INGEST_URL?: string;
   POKE_API_KEY?: string;
   APP_UPLOAD_TOKEN: string;
   URL_SIGNING_SECRET: string;
