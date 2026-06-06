@@ -40,7 +40,7 @@ Paste this into the phone app:
 Then:
 
 1. Tap **Save settings**.
-2. Tap **Test backend**.
+2. Tap **Test backend**. This sends `hello from poke phone` to Poke.
 3. Tap **Mic** and allow microphone.
 4. Tap **Assistant**.
 5. Set **Poke Phone** as default assistant.
@@ -61,3 +61,4 @@ Then:
 - No R2 bucket is needed.
 - Audio expires after 24 hours.
 - Keep voice notes short. The backend rejects audio above 20 MB.
+- Test backend is text-only. Real voice notes still include a temporary `audio_url`.
