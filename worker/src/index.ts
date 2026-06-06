@@ -8,7 +8,7 @@ export { AudioObject };
 const DEFAULT_TTL_SECONDS = 86_400;
 const DEFAULT_MAX_AUDIO_BYTES = 20 * 1024 * 1024;
 const DEFAULT_POKE_API_URL = "https://poke.com/api/v1/inbound/api-message";
-const DEFAULT_POKE_INGEST_BASE_URL = "https://api.poke.com/v1/ingest";
+const DEFAULT_POKE_INGEST_BASE_URL = "https://poke.com/api/v1/ingest";
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -153,32 +153,47 @@ async function sendPoke(env: Env, body: Record<string, unknown>): Promise<{
   const endpoints = resolvePokeEndpoints(env);
 
   if (!token || endpoints.length === 0) {
+    console.error("Poke config missing: check POKE_INGEST_TOKEN and POKE_INGEST_ENDPOINT_ID");
     return {
       ok: false,
       status: 500,
-      body: "Missing POKE_INGEST_TOKEN/POKE_API_KEY or POKE_INGEST_ENDPOINT_ID/POKE_INGEST_URL"
+      body: "Missing configuration"
     };
   }
 
+  const jsonBody = JSON.stringify(body);
   let lastResult = { ok: false, status: 0, body: "No Poke endpoint attempted" };
   for (const endpoint of endpoints) {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${token}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+    try {
+      console.log(`POST -> ${endpoint}`);
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+          "x-poke-source": "poke-phone-worker"
+        },
+        body: jsonBody
+      });
 
-    const responseBody = await response.text();
-    lastResult = {
-      ok: response.ok,
-      status: response.status,
-      body: responseBody
-    };
+      const responseBody = await response.text();
+      lastResult = {
+        ok: response.ok,
+        status: response.status,
+        body: responseBody
+      };
 
-    if (response.ok) return lastResult;
+      if (response.ok) {
+        console.log(`Poke hit: ${endpoint} (${response.status})`);
+        return lastResult;
+      }
+
+      console.warn(`Poke miss: ${endpoint} -> ${response.status}: ${responseBody}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Poke fetch error: ${endpoint}: ${message}`);
+      lastResult = { ok: false, status: 0, body: message };
+    }
   }
 
   return lastResult;
@@ -197,22 +212,10 @@ function resolvePokeToken(env: Env): string | undefined {
 }
 
 function resolvePokeEndpoints(env: Env): string[] {
-  if (env.POKE_INGEST_URL) return [env.POKE_INGEST_URL, fallbackPokeUrl(env.POKE_INGEST_URL)].filter(
-    (value, index, values): value is string => Boolean(value) && values.indexOf(value) === index
-  );
+  if (env.POKE_INGEST_URL) return [env.POKE_INGEST_URL];
   if (env.POKE_INGEST_ENDPOINT_ID) {
     const id = encodeURIComponent(env.POKE_INGEST_ENDPOINT_ID);
-    return [
-      `${DEFAULT_POKE_INGEST_BASE_URL}/${id}`,
-      `https://poke.com/api/v1/ingest/${id}`
-    ];
+    return [`${DEFAULT_POKE_INGEST_BASE_URL}/${id}`];
   }
   return [env.POKE_API_URL || DEFAULT_POKE_API_URL];
-}
-
-function fallbackPokeUrl(endpoint: string): string | undefined {
-  if (endpoint.startsWith("https://api.poke.com/v1/ingest/")) {
-    return endpoint.replace("https://api.poke.com/v1/ingest/", "https://poke.com/api/v1/ingest/");
-  }
-  return undefined;
 }

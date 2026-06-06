@@ -42,7 +42,7 @@ When it asks for values:
 Example: if Poke gives this URL:
 
 ```text
-https://api.poke.com/v1/ingest/abc123
+https://poke.com/api/v1/ingest/abc123
 ```
 
 then `POKE_INGEST_ENDPOINT_ID` is:
@@ -99,4 +99,4 @@ Then:
 - Audio expires after 24 hours.
 - Keep voice notes short. The backend rejects audio above 20 MB.
 - The backend sends JSON to Poke with `message`, `audio_url`, `mime_type`, `duration_ms`, `source`, `device`, and `expires_at`.
-- The Worker tries Poke's official `api.poke.com` ingest URL first, then falls back to `poke.com/api` if Poke's API hostname returns the 1016 DNS/origin error.
+- The Worker sends to `https://poke.com/api/v1/ingest/{endpoint_id}`. `view-link.cx` is only Telegram's redirect wrapper, not the API URL.
